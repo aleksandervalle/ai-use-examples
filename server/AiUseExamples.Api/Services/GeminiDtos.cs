@@ -6,6 +6,30 @@ namespace AiUseExamples.Api.Services;
 public class GeminiPart
 {
     public string? Text { get; set; }
+    
+    [JsonPropertyName("functionCall")]
+    public GeminiFunctionCall? FunctionCall { get; set; }
+    
+    [JsonPropertyName("functionResponse")]
+    public GeminiFunctionResponse? FunctionResponse { get; set; }
+}
+
+public class GeminiFunctionCall
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+    
+    [JsonPropertyName("args")]
+    public Dictionary<string, object> Args { get; set; } = new();
+}
+
+public class GeminiFunctionResponse
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+    
+    [JsonPropertyName("response")]
+    public object Response { get; set; } = new();
 }
 
 public class GeminiContent
@@ -19,6 +43,9 @@ public class GeminiCandidate
     public GeminiContent? Content { get; set; }
     [JsonPropertyName("usageMetadata")]
     public GeminiUsageMetadata? UsageMetadata { get; set; }
+    
+    [JsonPropertyName("finishReason")]
+    public string? FinishReason { get; set; }
 }
 
 public class GeminiResponse

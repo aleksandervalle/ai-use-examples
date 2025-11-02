@@ -21,6 +21,12 @@ export default function Layout() {
           >
             Example #2
           </Link>
+          <Link 
+            to="/example-3" 
+            className={`nav-link ${location.pathname === '/example-3' ? 'active' : ''}`}
+          >
+            Example #3
+          </Link>
         </nav>
       </aside>
       <main className="main-content">

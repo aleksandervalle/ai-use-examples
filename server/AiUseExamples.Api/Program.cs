@@ -12,6 +12,11 @@ builder.Services.AddHttpClient();
 // Add Gemini API Service
 builder.Services.AddScoped<AiUseExamples.Api.Services.IGeminiApiService, AiUseExamples.Api.Services.GeminiApiService>();
 
+// Add Function Services
+builder.Services.AddScoped<AiUseExamples.Api.Services.IWeatherService, AiUseExamples.Api.Services.WeatherService>();
+builder.Services.AddScoped<AiUseExamples.Api.Services.IPersonLookupService, AiUseExamples.Api.Services.PersonLookupService>();
+builder.Services.AddScoped<AiUseExamples.Api.Services.IMeetingService, AiUseExamples.Api.Services.MeetingService>();
+
 // Add CORS to allow requests from the React client
 builder.Services.AddCors(options =>
 {

@@ -11,6 +11,7 @@ public interface IGeminiApiService
 {
     Task<string> GenerateCompletionAsync(string prompt, CancellationToken cancellationToken, List<GeminiTool>? tools = null);
     IAsyncEnumerable<string> StreamCompletionAsync(string prompt, CancellationToken cancellationToken, List<GeminiTool>? tools = null);
+    Task<GeminiCompletionResult> GenerateCompletionWithToolsAsync(List<object> contents, List<GeminiTool>? tools, CancellationToken cancellationToken);
 }
 
 public class GeminiApiService : IGeminiApiService
@@ -182,6 +183,80 @@ public class GeminiApiService : IGeminiApiService
 
         var text = geminiResponse.Candidates.First().Content?.Parts?.FirstOrDefault()?.Text ?? string.Empty;
         return RemoveCodeBlockFormatting(text);
+    }
+
+    public async Task<GeminiCompletionResult> GenerateCompletionWithToolsAsync(List<object> contents, List<GeminiTool>? tools, CancellationToken cancellationToken)
+    {
+        try
+        {
+            _logger.LogInformation("Sending request to Gemini with tools");
+
+            var requestBody = new Dictionary<string, object>
+            {
+                ["contents"] = contents,
+                ["generationConfig"] = new Dictionary<string, object>
+                {
+                    ["temperature"] = 0.0,
+                    ["maxOutputTokens"] = 20000,
+                    ["thinkingConfig"] = new { thinkingBudget = 2000 }
+                },
+                ["safetySettings"] = Array.Empty<object>()
+            };
+
+            if (tools != null && tools.Count > 0)
+            {
+                requestBody["tools"] = tools;
+            }
+
+            string jsonBody = JsonSerializer.Serialize(requestBody, _jsonSerializerOptions);
+            var url = $"{_geminiEndpoint}?key={_apiKey}";
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
+            };
+
+            var client = _httpClientFactory.CreateClient(nameof(GeminiApiService));
+
+            var response = await client.SendAsync(request, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError("Gemini API error: {StatusCode} - {ErrorContent}", response.StatusCode, errorContent);
+                throw new Exception($"Gemini API error: {response.StatusCode}");
+            }
+
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var geminiResponse = JsonSerializer.Deserialize<GeminiResponse>(responseBody, _jsonSerializerOptions);
+
+            if (geminiResponse == null || geminiResponse.Candidates == null || !geminiResponse.Candidates.Any())
+            {
+                _logger.LogWarning("Gemini API returned an empty response");
+                return new GeminiCompletionResult { Text = string.Empty, FunctionCalls = new List<GeminiFunctionCall>() };
+            }
+
+            var candidate = geminiResponse.Candidates.First();
+            var parts = candidate.Content?.Parts ?? new List<GeminiPart>();
+            
+            var text = parts.FirstOrDefault(p => !string.IsNullOrEmpty(p.Text))?.Text ?? string.Empty;
+            var functionCalls = parts
+                .Where(p => p.FunctionCall != null)
+                .Select(p => p.FunctionCall!)
+                .ToList();
+
+            return new GeminiCompletionResult
+            {
+                Text = RemoveCodeBlockFormatting(text),
+                FunctionCalls = functionCalls,
+                FinishReason = candidate.FinishReason
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating completion with tools from Gemini");
+            throw;
+        }
     }
 
     private static string RemoveCodeBlockFormatting(string response)
