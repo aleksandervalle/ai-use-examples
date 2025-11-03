@@ -10,7 +10,6 @@ namespace AiUseExamples.Api.Services;
 public interface IGeminiApiService
 {
     Task<string> GenerateCompletionAsync(string prompt, CancellationToken cancellationToken, List<GeminiTool>? tools = null);
-    IAsyncEnumerable<string> StreamCompletionAsync(string prompt, CancellationToken cancellationToken, List<GeminiTool>? tools = null);
     Task<GeminiCompletionResult> GenerateCompletionWithToolsAsync(List<object> contents, List<GeminiTool>? tools, CancellationToken cancellationToken);
     Task<string> GenerateMultimodalCompletionAsync(string prompt, byte[] imageData, string mimeType, CancellationToken cancellationToken);
 }
@@ -88,68 +87,6 @@ public class GeminiApiService : IGeminiApiService
         {
             _logger.LogError(ex, "Error generating completion from Gemini");
             throw;
-        }
-    }
-
-    public async IAsyncEnumerable<string> StreamCompletionAsync(
-        string prompt,
-        [EnumeratorCancellation] CancellationToken cancellationToken,
-        List<GeminiTool>? tools = null)
-    {
-        _logger.LogInformation("Sending streaming text prompt to Gemini");
-
-        var streamingUrl = $"{_geminiEndpoint.Replace(":generateContent", ":streamGenerateContent")}?key={_apiKey}";
-
-        var requestBody = new Dictionary<string, object>
-        {
-            ["contents"] = new object[]
-            {
-                new
-                {
-                    parts = new object[]
-                    {
-                        new { text = prompt }
-                    }
-                }
-            },
-            ["generationConfig"] = new Dictionary<string, object>
-            {
-                ["temperature"] = 1.0,
-                ["maxOutputTokens"] = 20000
-            },
-            ["safetySettings"] = Array.Empty<object>()
-        };
-
-        if (tools != null && tools.Count > 0)
-        {
-            requestBody["tools"] = tools;
-        }
-
-        string jsonBody = JsonSerializer.Serialize(requestBody, _jsonSerializerOptions);
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, streamingUrl)
-        {
-            Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
-        };
-
-        var client = _httpClientFactory.CreateClient(nameof(GeminiApiService));
-
-        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-
-        await foreach (var chunk in JsonSerializer.DeserializeAsyncEnumerable<GeminiStreamChunk>(
-            responseStream, _jsonSerializerOptions, cancellationToken))
-        {
-            if (chunk is null) continue;
-
-            var extractedText = chunk.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
-
-            if (!string.IsNullOrEmpty(extractedText))
-            {
-                yield return extractedText;
-            }
         }
     }
 

@@ -110,6 +110,7 @@ public class Example3Controller : ControllerBase
 
             // No function calls - we have a final text response
             // Stream it word by word
+            // LOL!
             if (!string.IsNullOrEmpty(result.Text))
             {
                 var words = result.Text.Split(' ');
