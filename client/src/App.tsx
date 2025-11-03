@@ -3,6 +3,7 @@ import Layout from './components/Layout';
 import Example1 from './pages/Example1';
 import Example2 from './pages/Example2';
 import Example3 from './pages/Example3';
+import Example4 from './pages/Example4';
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
         <Route path="example-1" element={<Example1 />} />
         <Route path="example-2" element={<Example2 />} />
         <Route path="example-3" element={<Example3 />} />
+        <Route path="example-4" element={<Example4 />} />
       </Route>
     </Routes>
   );

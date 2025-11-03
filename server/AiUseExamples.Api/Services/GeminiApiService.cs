@@ -12,6 +12,7 @@ public interface IGeminiApiService
     Task<string> GenerateCompletionAsync(string prompt, CancellationToken cancellationToken, List<GeminiTool>? tools = null);
     IAsyncEnumerable<string> StreamCompletionAsync(string prompt, CancellationToken cancellationToken, List<GeminiTool>? tools = null);
     Task<GeminiCompletionResult> GenerateCompletionWithToolsAsync(List<object> contents, List<GeminiTool>? tools, CancellationToken cancellationToken);
+    Task<string> GenerateMultimodalCompletionAsync(string prompt, byte[] imageData, string mimeType, CancellationToken cancellationToken);
 }
 
 public class GeminiApiService : IGeminiApiService
@@ -255,6 +256,60 @@ public class GeminiApiService : IGeminiApiService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating completion with tools from Gemini");
+            throw;
+        }
+    }
+
+    public async Task<string> GenerateMultimodalCompletionAsync(string prompt, byte[] imageData, string mimeType, CancellationToken cancellationToken)
+    {
+        try
+        {
+            _logger.LogInformation("Sending multimodal prompt to Gemini with image");
+
+            var base64Image = Convert.ToBase64String(imageData);
+
+            var requestBody = new Dictionary<string, object>
+            {
+                ["contents"] = new object[]
+                {
+                    new
+                    {
+                        parts = new object[]
+                        {
+                            new { text = prompt },
+                            new
+                            {
+                                inlineData = new
+                                {
+                                    mimeType = mimeType,
+                                    data = base64Image
+                                }
+                            }
+                        }
+                    }
+                },
+                ["generationConfig"] = new Dictionary<string, object>
+                {
+                    ["temperature"] = 0.0,
+                    ["maxOutputTokens"] = 20000,
+                    ["thinkingConfig"] = new { thinkingBudget = 0 }
+                },
+                ["safetySettings"] = Array.Empty<object>()
+            };
+
+            string jsonBody = JsonSerializer.Serialize(requestBody, _jsonSerializerOptions);
+            var completion = await PostToGeminiAsync(jsonBody, cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(completion))
+            {
+                _logger.LogWarning("Gemini returned an empty completion for multimodal request");
+            }
+
+            return completion;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating multimodal completion from Gemini");
             throw;
         }
     }
