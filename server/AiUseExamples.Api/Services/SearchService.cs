@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -36,7 +37,7 @@ public class SearchService
         // 1) Query expansion
         var expansion = await ExpandQueryAsync(request.Query, request.DocType, cancellationToken);
         var expandedQuery = expansion.ExpandedEnglishQuery;
-        var effectiveDocType = request.DocType ?? expansion.DocType;
+        var effectiveDocType = !string.IsNullOrEmpty(request.DocType) ? request.DocType : expansion.DocType;
 
         // 2) Embedding + Vector search
         var queryEmbedding = await _gemini.GenerateEmbeddingAsync(expandedQuery, GeminiEmbeddingTaskType.RetrievalQuery, cancellationToken);
@@ -66,7 +67,7 @@ public class SearchService
         var docMap = docs.ToDictionary(d => d.Id, d => d);
 
         // 3) Rerank in parallel
-        var rerankScores = new Dictionary<Guid, double>();
+        var rerankScores = new ConcurrentDictionary<Guid, double>();
         using var semaphore = new SemaphoreSlim(_limits.RerankConcurrency);
         var tasks = new List<Task>();
         foreach (var pair in pairs)
@@ -142,11 +143,11 @@ Return JSON only.";
         foreach (var x in ordered)
         {
             if (!docMap.TryGetValue(x.id, out var d)) continue;
-            if (!string.IsNullOrEmpty(effectiveDocType) && !string.Equals(d.DocType, effectiveDocType, StringComparison.OrdinalIgnoreCase))
-            {
-                // If a filter was provided, skip mismatches
-                continue;
-            }
+            // if (!string.IsNullOrEmpty(effectiveDocType) && !string.Equals(d.DocType, effectiveDocType, StringComparison.OrdinalIgnoreCase))
+            // {
+            //     // If a filter was provided, skip mismatches
+            //     continue;
+            // }
             response.Results.Add(new SearchResultItem
             {
                 DocId = d.Id,
@@ -162,29 +163,43 @@ Return JSON only.";
         return response;
     }
 
-    private async Task<(string Language, string EnglishQuery, string ExpandedEnglishQuery, string? DocType)> ExpandQueryAsync(string query, string? docType, CancellationToken cancellationToken)
+    private async Task<(string EnglishQuery, string ExpandedEnglishQuery, string? DocType)> ExpandQueryAsync(string query, string? docType, CancellationToken cancellationToken)
     {
-        var prompt = @"You are a query expander. Given a user query, detect language, translate to English, and produce a short expanded English variant. Also, assign a document type if evident: Invoice, Receipt, Flight Ticket, Order Confirmation, or null if unknown.
+        var prompt = @"You are a query expander. Given a user query, translate to English if needed, and produce a short expanded English variant. Also, assign a document type if evident: Invoice, Receipt, Flight Ticket, Order Confirmation, or leave empty if unknown.
 
 Respond with JSON only:
 {
-  ""language"": ""<detected language>"",
   ""englishQuery"": ""<English translation>"",
   ""expandedEnglishQuery"": ""<Expanded English query>"",
-  ""docType"": ""Invoice|Receipt|Flight Ticket|Order Confirmation|null""
+  ""docType"": ""Invoice|Receipt|Flight Ticket|Order Confirmation|Other|"" // Leave docType as empty string if query does not hint at document type
 }
 
 Return JSON only.
 UserQuery: " + query;
 
         var json = await _gemini.GenerateCompletionAsync(prompt, cancellationToken, null);
+        _logger.LogInformation("Query expansion response: {Response}", json);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        var language = root.TryGetProperty("language", out var l) ? l.GetString() ?? "" : "";
         var english = root.TryGetProperty("englishQuery", out var e) ? e.GetString() ?? query : query;
         var expanded = root.TryGetProperty("expandedEnglishQuery", out var ex) ? ex.GetString() ?? english : english;
-        var dt = docType ?? (root.TryGetProperty("docType", out var dtEl) ? dtEl.GetString() : null);
-        return (language, english, expanded, dt);
+        
+        // Handle docType: use provided docType if not empty, otherwise use LLM response if not empty
+        string? dt = null;
+        if (!string.IsNullOrEmpty(docType))
+        {
+            dt = docType;
+        }
+        else if (root.TryGetProperty("docType", out var dtEl))
+        {
+            var dtValue = dtEl.GetString();
+            if (!string.IsNullOrEmpty(dtValue))
+            {
+                dt = dtValue;
+            }
+        }
+        
+        return (english, expanded, dt);
     }
 
     private async Task<List<Guid>> TieBreakAsync(string userQuery, List<Guid> ids, System.Collections.Generic.IDictionary<Guid, Document> docMap, CancellationToken cancellationToken)

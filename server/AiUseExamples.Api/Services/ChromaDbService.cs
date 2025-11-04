@@ -62,10 +62,10 @@ public class ChromaDbService : IChromaDbService
             ["include"] = new[] { "distances" },
             ["n_results"] = nResults + Math.Max(0, offset)
         };
-        if (!string.IsNullOrWhiteSpace(containsFilter))
-        {
-            body["where_document"] = new Dictionary<string, object?> { ["$contains"] = containsFilter };
-        }
+        // if (!string.IsNullOrWhiteSpace(containsFilter))
+        // {
+        //     body["where_document"] = new Dictionary<string, object?> { ["$contains"] = containsFilter };
+        // }
 
         var response = await SendAsync(HttpMethod.Post, url, body, cancellationToken);
         var result = JsonSerializer.Deserialize<ChromaQueryResult>(response, _jsonOptions) ?? new ChromaQueryResult();

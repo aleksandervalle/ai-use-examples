@@ -35,6 +35,7 @@ public static class SchemaInitializer
   ClassificationConfidence REAL,
   BetterName TEXT,
   ExtractedDataJson TEXT,
+  Description TEXT,
   ProcessingStatus TEXT NOT NULL,
   ErrorMessage TEXT,
   EmbeddedAt TEXT,
@@ -47,6 +48,26 @@ CREATE INDEX IF NOT EXISTS IX_Documents_ProcessingStatus ON Documents(Processing
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = createSql;
         await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+        // Add Description column if it doesn't exist (for existing databases)
+        // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first
+        try
+        {
+            await using var checkCmd = connection.CreateCommand();
+            checkCmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Documents') WHERE name='Description'";
+            var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync(cancellationToken));
+            if (count == 0)
+            {
+                await using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE Documents ADD COLUMN Description TEXT";
+                await alterCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            // If the check fails, the column might already exist or table doesn't exist yet
+            // Ignore and continue
+        }
     }
 }
 

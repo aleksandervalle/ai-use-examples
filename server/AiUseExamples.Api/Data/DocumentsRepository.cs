@@ -30,10 +30,10 @@ public class DocumentsRepository
     {
         const string sql = @"INSERT INTO Documents (
             Id, OriginalFileName, StoredFileName, FilePath, MimeType, FileSize,
-            DocType, ClassificationConfidence, BetterName, ExtractedDataJson,
+            DocType, ClassificationConfidence, BetterName, ExtractedDataJson, Description,
             ProcessingStatus, ErrorMessage, EmbeddedAt, CreatedAt, UpdatedAt)
             VALUES (@Id, @OriginalFileName, @StoredFileName, @FilePath, @MimeType, @FileSize,
-                    @DocType, @ClassificationConfidence, @BetterName, @ExtractedDataJson,
+                    @DocType, @ClassificationConfidence, @BetterName, @ExtractedDataJson, @Description,
                     @ProcessingStatus, @ErrorMessage, @EmbeddedAt, @CreatedAt, @UpdatedAt);";
 
         await using var conn = CreateConnection();
@@ -50,6 +50,7 @@ public class DocumentsRepository
         cmd.Parameters.AddWithValue("@ClassificationConfidence", (object?)document.ClassificationConfidence ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@BetterName", (object?)document.BetterName ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@ExtractedDataJson", (object?)document.ExtractedDataJson ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@Description", (object?)document.Description ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@ProcessingStatus", document.ProcessingStatus);
         cmd.Parameters.AddWithValue("@ErrorMessage", (object?)document.ErrorMessage ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@EmbeddedAt", (object?)ToIso(document.EmbeddedAt) ?? DBNull.Value);
@@ -83,10 +84,11 @@ public class DocumentsRepository
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task UpdateExtractionAsync(Guid id, string extractedDataJson, CancellationToken cancellationToken)
+    public async Task UpdateExtractionAsync(Guid id, string extractedDataJson, string description, CancellationToken cancellationToken)
     {
         const string sql = @"UPDATE Documents SET
             ExtractedDataJson = @ExtractedDataJson,
+            Description = @Description,
             UpdatedAt = @UpdatedAt
             WHERE Id = @Id";
 
@@ -95,6 +97,7 @@ public class DocumentsRepository
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = sql;
         cmd.Parameters.AddWithValue("@ExtractedDataJson", extractedDataJson);
+        cmd.Parameters.AddWithValue("@Description", (object?)description ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@UpdatedAt", ToIso(DateTime.UtcNow));
         cmd.Parameters.AddWithValue("@Id", id.ToString());
         await cmd.ExecuteNonQueryAsync(cancellationToken);
@@ -243,6 +246,7 @@ public class DocumentsRepository
             ClassificationConfidence = reader["ClassificationConfidence"] == DBNull.Value ? null : Convert.ToDouble(reader["ClassificationConfidence"], CultureInfo.InvariantCulture),
             BetterName = reader["BetterName"] as string,
             ExtractedDataJson = reader["ExtractedDataJson"] as string,
+            Description = reader["Description"] as string,
             ProcessingStatus = reader["ProcessingStatus"]?.ToString() ?? string.Empty,
             ErrorMessage = reader["ErrorMessage"] as string,
             EmbeddedAt = ParseIso(reader["EmbeddedAt"] as string),

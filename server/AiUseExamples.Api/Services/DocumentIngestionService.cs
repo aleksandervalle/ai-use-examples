@@ -76,11 +76,11 @@ public class DocumentIngestionService
             await _repo.UpdateAfterClassificationAsync(id, renameResult.storedFileName, renameResult.filePath, docType, confidence, betterName, cancellationToken);
 
             // 3) Extraction
-            var extractedJson = await _extraction.ExtractDataJsonAsync(docType, imageData, stored.MimeType, cancellationToken);
-            await _repo.UpdateExtractionAsync(id, extractedJson, cancellationToken);
+            var (extractedJson, description) = await _extraction.ExtractDataJsonAsync(docType, imageData, stored.MimeType, cancellationToken);
+            await _repo.UpdateExtractionAsync(id, extractedJson, description, cancellationToken);
 
-            // 4) Embedding input
-            var canonicalText = betterName + "\nDocType: " + docType + "\nExtractedData: " + extractedJson;
+            // 4) Embedding input - include description in canonical text
+            var canonicalText = betterName + "\nDocType: " + docType + "\nDescription: " + description + "\nExtractedData: " + extractedJson;
             var embedding = await _gemini.GenerateEmbeddingAsync(canonicalText, GeminiEmbeddingTaskType.RetrievalDocument, cancellationToken);
 
             // 5) Upsert to Chroma
@@ -94,6 +94,7 @@ public class DocumentIngestionService
             document.ClassificationConfidence = confidence;
             document.BetterName = betterName;
             document.ExtractedDataJson = extractedJson;
+            document.Description = description;
             document.StoredFileName = renameResult.storedFileName;
             document.FilePath = renameResult.filePath;
             document.EmbeddedAt = DateTime.UtcNow;

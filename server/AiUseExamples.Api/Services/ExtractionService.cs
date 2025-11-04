@@ -9,7 +9,7 @@ namespace AiUseExamples.Api.Services;
 public interface IExtractionService
 {
     Task<(string DocType, double Confidence, string BetterName)> ClassifyAndSuggestNameAsync(byte[] imageData, string mimeType, string originalFileName, CancellationToken cancellationToken);
-    Task<string> ExtractDataJsonAsync(string normalizedDocType, byte[] imageData, string mimeType, CancellationToken cancellationToken);
+    Task<(string ExtractedDataJson, string Description)> ExtractDataJsonAsync(string normalizedDocType, byte[] imageData, string mimeType, CancellationToken cancellationToken);
 }
 
 public class ExtractionService : IExtractionService
@@ -63,11 +63,47 @@ Return JSON only.";
         return (NormalizeDocType(docType), confidence, betterName);
     }
 
-    public async Task<string> ExtractDataJsonAsync(string normalizedDocType, byte[] imageData, string mimeType, CancellationToken cancellationToken)
+    public async Task<(string ExtractedDataJson, string Description)> ExtractDataJsonAsync(string normalizedDocType, byte[] imageData, string mimeType, CancellationToken cancellationToken)
     {
-        var prompt = GetExtractionPrompt(normalizedDocType);
-        var result = await _geminiApiService.GenerateMultimodalCompletionAsync(prompt, imageData, mimeType, cancellationToken);
-        return result;
+        var extractionPrompt = GetExtractionPrompt(normalizedDocType);
+        var descriptionPrompt = @"Provide a detailed description of what this document is about. Focus on the key information, purpose, and context. Be specific and informative.
+
+Respond with JSON only in this format:
+{
+  ""description"": ""<detailed description of the document>""
+}
+
+Return JSON only.";
+
+        var extractionTask = _geminiApiService.GenerateMultimodalCompletionAsync(extractionPrompt, imageData, mimeType, cancellationToken);
+        var descriptionTask = _geminiApiService.GenerateMultimodalCompletionAsync(descriptionPrompt, imageData, mimeType, cancellationToken);
+
+        await Task.WhenAll(extractionTask, descriptionTask);
+
+        var extractedJson = await extractionTask;
+        var descriptionResult = await descriptionTask;
+
+        var description = ParseDescription(descriptionResult);
+
+        return (extractedJson, description);
+    }
+
+    private static string ParseDescription(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("description", out var desc))
+            {
+                return desc.GetString() ?? string.Empty;
+            }
+        }
+        catch
+        {
+            // If parsing fails, return empty string
+        }
+        return string.Empty;
     }
 
     private static (string docType, double confidence) ParseClassification(string json)
